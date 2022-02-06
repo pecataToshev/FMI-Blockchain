@@ -25,13 +25,13 @@ contract VaccineRegistry {
 
     address public trustedAuthority;
 
-    mapping (string => VaccineData) approvedVaccines;
+    mapping (string => bool) approvedVaccines;
     mapping (address => bool) public vaccinationCenters;
     mapping (address => PatientRecord) public patientRecords;
 
     constructor() {
         trustedAuthority = msg.sender;
-        addVaccine("a"), addVaccine("b"), addVaccine("c");
+        addVaccine("a"); addVaccine("b"); addVaccine("c");
     }
 
     function register(string memory name) public {
@@ -51,7 +51,7 @@ contract VaccineRegistry {
         require(isRegistered(patient), "Patient not registered!");
         require(patientRecords[patient].hasRequestedVaccination , "Patient has not requested a vaccine!");
         
-        patientRecords[patient].records.push(VaccinationRecord(vaccineName, block.timestamp););
+        patientRecords[patient].records.push(VaccinationRecord(vaccineName, block.timestamp));
         
         // uint len = patientRecords[patient].records.length;
         // console.log(patientRecords[patient].records[len - 1].vaccine);
