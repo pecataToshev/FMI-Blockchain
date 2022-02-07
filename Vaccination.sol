@@ -2,7 +2,6 @@
 
 pragma solidity >= 0.7.0;
 
-// import "@nomiclabs/buidler/console.sol";
 import "hardhat/console.sol";
 
 uint constant SECONDS_IN_A_DAY = 60 * 60 * 24;
@@ -101,7 +100,7 @@ contract VaccineRegistry {
         if (doses == 0) return false;
 
         uint diff = block.timestamp - patientRecords[person].records[doses - 1].timestamp;
-        return daysToSeconds(certificateValidityInDays) > diff;
+        return convertDaysToSeconds(certificateValidityInDays) > diff;
     }
 
     function getTotalNumberVaccineShots() public view returns (uint256) {
@@ -113,12 +112,32 @@ contract VaccineRegistry {
     }
 
     function getVaccineShotsLastWeekByDay() public view returns (uint[] memory) {
-        uint currentDay = timestampToDays(block.timestamp);
+        uint currentDay = convertSecondsToDays(block.timestamp);
         uint[] memory lastWeekVaccineShotByDay = new uint[](7);
         for(uint i = 0; i < 7; i++) {
             lastWeekVaccineShotByDay[i] = stats.vaccineShotsByDay[currentDay - i];
         }
         return lastWeekVaccineShotByDay;
+    }
+
+    function getRemainingDaysUntilNextDose(address patient) public view returns (uint) {
+        uint doses = getNumberOfDoses(patient);
+        if (doses == 0) {
+            return 0;
+        }
+
+        VaccinationRecord memory lastRecord = patientRecords[patient].records[doses - 1];
+
+        requireVaccineIntervalPresent(lastRecord.vaccine, doses);
+
+        uint minimumDays = approvedVaccines[lastRecord.vaccine].minimumDaysAfterPrevious[doses];
+        uint diff = block.timestamp - lastRecord.timestamp;
+        uint minimumDaysSeconds = convertDaysToSeconds(minimumDays);
+        if (minimumDaysSeconds <= diff) {
+            return 0;
+        }
+
+        return convertSecondsToDays(minimumDaysSeconds - diff + SECONDS_IN_A_DAY - 1);
     }
 
     function requireAuthority() private view {
@@ -133,6 +152,10 @@ contract VaccineRegistry {
         require(isRegistered(patient), "Patient not registered!");
     }
 
+    function requireVaccineIntervalPresent(string memory vaccineName, uint dose) private view {
+        require(approvedVaccines[vaccineName].minimumDaysAfterPrevious.length > dose, "Information for dose is missing");
+    }
+
     function requirePatientEligibleForVaccination(address patient) private view {
         require(patientEligibleForVaccination(patient), "Patient is not eligible for vaccination!");
     }
@@ -144,21 +167,24 @@ contract VaccineRegistry {
         }
 
         VaccinationRecord memory lastRecord = patientRecords[patient].records[doses - 1];
+
+        requireVaccineIntervalPresent(lastRecord.vaccine, doses);
+
         uint minimumDays = approvedVaccines[lastRecord.vaccine].minimumDaysAfterPrevious[doses];
         uint diff = block.timestamp - lastRecord.timestamp;
-        return daysToSeconds(minimumDays) <= diff;
+        return convertDaysToSeconds(minimumDays) <= diff;
     }
 
     function getNumberOfDoses(address patient) private view returns (uint) {
         return patientRecords[patient].records.length;
     }
 
-    function daysToSeconds(uint _days) private pure returns (uint) {
+    function convertDaysToSeconds(uint _days) private pure returns (uint) {
         return _days * SECONDS_IN_A_DAY;
     }
 
-    function timestampToDays(uint timestamp) private pure returns (uint) {
-        return timestamp / SECONDS_IN_A_DAY; 
+    function convertSecondsToDays(uint _seconds) private pure returns (uint) {
+        return _seconds / SECONDS_IN_A_DAY; 
     }
 
     function isVaccineApproved(string memory name) private view returns (bool) {
@@ -176,7 +202,7 @@ contract VaccineRegistry {
     function updateStatistics(address patient) private {
         increaseTotalVaccineShots();
         increaseTotalVaccinatedPeople(patient);
-        uint currentDay = timestampToDays(block.timestamp);
+        uint currentDay = convertSecondsToDays(block.timestamp);
         stats.vaccineShotsByDay[currentDay]++;
     }
 
