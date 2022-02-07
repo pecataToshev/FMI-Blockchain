@@ -5,6 +5,8 @@ pragma solidity >= 0.7.0;
 // import "@nomiclabs/buidler/console.sol";
 import "hardhat/console.sol";
 
+uint constant SECONDS_IN_A_DAY = 60 * 60 * 24;
+
 struct VaccinationRecord  {
     string vaccine;
     uint256 timestamp;
@@ -21,6 +23,11 @@ struct VaccineData {
     uint[] minimumDaysAfterPrevious;
 }
 
+struct Statistics {
+    uint totalNumberVaccineShots;
+    uint totalNumberVaccinatedPeople;
+    mapping (uint => uint) vaccineShotsByDay;
+}
 
 contract VaccineRegistry {
 
@@ -30,7 +37,8 @@ contract VaccineRegistry {
     mapping (string => VaccineData) public approvedVaccines;
     mapping (address => bool) public vaccinationCenters;
     mapping (address => PatientRecord) public patientRecords;
-    
+
+    Statistics stats;
 
     constructor(uint _certificateValidityInDays) {
         trustedAuthority = msg.sender;
@@ -62,8 +70,7 @@ contract VaccineRegistry {
         patientRecords[patient].records.push(VaccinationRecord(vaccineName, block.timestamp));
         patientRecords[patient].hasRequestedVaccination = false;
         
-        // uint len = patientRecords[patient].records.length;
-        // console.log(patientRecords[patient].records[len - 1].vaccine);
+        updateStatistics(patient);
     }
 
     function changeCertificateValidityInDays(uint newCertificateValidityInDays) public {
@@ -94,7 +101,24 @@ contract VaccineRegistry {
         if (doses == 0) return false;
 
         uint diff = block.timestamp - patientRecords[person].records[doses - 1].timestamp;
-        return daysToMillis(certificateValidityInDays) > diff;
+        return daysToSeconds(certificateValidityInDays) > diff;
+    }
+
+    function getTotalNumberVaccineShots() public view returns (uint256) {
+        return stats.totalNumberVaccineShots;
+    }
+
+    function getTotalNumberVaccinatedPeople() public view returns (uint256) {
+        return stats.totalNumberVaccinatedPeople;
+    }
+
+    function getVaccineShotsLastWeekByDay() public view returns (uint[] memory) {
+        uint currentDay = timestampToDays(block.timestamp);
+        uint[] memory lastWeekVaccineShotByDay = new uint[](7);
+        for(uint i = 0; i < 7; i++) {
+            lastWeekVaccineShotByDay[i] = stats.vaccineShotsByDay[currentDay - i];
+        }
+        return lastWeekVaccineShotByDay;
     }
 
     function requireAuthority() private view {
@@ -122,15 +146,19 @@ contract VaccineRegistry {
         VaccinationRecord memory lastRecord = patientRecords[patient].records[doses - 1];
         uint minimumDays = approvedVaccines[lastRecord.vaccine].minimumDaysAfterPrevious[doses];
         uint diff = block.timestamp - lastRecord.timestamp;
-        return daysToMillis(minimumDays) <= diff;
+        return daysToSeconds(minimumDays) <= diff;
     }
 
     function getNumberOfDoses(address patient) private view returns (uint) {
         return patientRecords[patient].records.length;
     }
 
-    function daysToMillis(uint _days) private pure returns (uint) {
-        return _days * 24 * 60 * 60 * 1000;
+    function daysToSeconds(uint _days) private pure returns (uint) {
+        return _days * SECONDS_IN_A_DAY;
+    }
+
+    function timestampToDays(uint timestamp) private pure returns (uint) {
+        return timestamp / SECONDS_IN_A_DAY; 
     }
 
     function isVaccineApproved(string memory name) private view returns (bool) {
@@ -143,5 +171,22 @@ contract VaccineRegistry {
 
     function isBlank(string memory a) private pure returns (bool) {
         return bytes(a).length == 0;
+    }
+
+    function updateStatistics(address patient) private {
+        increaseTotalVaccineShots();
+        increaseTotalVaccinatedPeople(patient);
+        uint currentDay = timestampToDays(block.timestamp);
+        stats.vaccineShotsByDay[currentDay]++;
+    }
+
+    function increaseTotalVaccineShots() private {
+        stats.totalNumberVaccineShots++;
+    }
+
+    function increaseTotalVaccinatedPeople(address patient) private {
+        if (patientRecords[patient].records.length == 1) {
+            stats.totalNumberVaccinatedPeople++;
+        }
     }
 }
